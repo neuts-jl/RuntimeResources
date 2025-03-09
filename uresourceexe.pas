@@ -29,7 +29,7 @@ unit uresourceexe;
 
 interface
 uses
-  classes, sysutils, fgl;
+  classes, sysutils, fgl, fileutil;
 
 Type
   TResource=class
@@ -103,7 +103,7 @@ var
 begin
   for i:=0 to FResources.Count-1 do
     if UpperCase(FResources[i].Name)=UpperCase(ResourceName) then
-    Raise(Exception.Create('File already added : '+#13#10+ResourceName));
+    Raise Exception.Create('File already added : '+#13#10+ResourceName);
   FResource:=TResource.Create;
   FResource.FileName:=ResourceFile;
   FResource.Name:=ResourceName;
@@ -123,28 +123,41 @@ Var
   Buffer : Array[1..4096] of byte;
   AddrResourceFile,Verif : Int64;
   i:integer;
+  TmpFile:string;
 begin
   if FResources.Count=0 then
-    Raise(Exception.Create('No Resourcefile(s)'));
+    Raise Exception.Create('No Resourcefile(s)');
   if not FileExists(ExeFileSrc) then
-    Raise(Exception.Create('File not found : '#13#10+ExeFileSrc));
+    Raise Exception.Create('File not found : '#13#10+ExeFileSrc);
   DeleteFile(ExeFileDest);
   if FileExists(ExeFileDest) then
-    Raise(Exception.Create('File busy or readonly '#13#10+ExeFileDest));
+    Raise Exception.Create('File busy or readonly '#13#10+ExeFileDest);
   for i:=0 to FResources.Count-1 do
     if Not FileExists(FResources[i].FileName) then
-      Raise(Exception.Create('File not found : '#13#10+FResources[i].FileName));
+      Raise Exception.Create('File not found : '#13#10+FResources[i].FileName);
+  TmpFile:= IncludeTrailingPathDelimiter(GetTempDir) +
+    FormatDateTime('yyyymmddhhnnsszzz', Now) + '.tmp';
 
-  hInput:=FileOpen(ExeFileSrc,fmOpenRead);
+  CopyFile(ExeFileSrc,TmpFile);
+  if not FileExists(TmpFile) then
+    Raise Exception.Create('Apply error');
+
+  hInput:=FileOpen(TmpFile,fmOpenRead);
   hOutput:=FileCreate(ExeFileDest);
   AddrResourceFile:=0;
   Repeat
     NumRead:=FileRead(hInput,Buffer,Sizeof(Buffer));
     NumWritten:=FileWrite(hOutput,Buffer,NumRead);
     inc(AddrResourceFile,NumWritten);
-  Until (NumRead=0) or (NumWritten<>NumRead);
+  Until (NumRead<=0) or (NumWritten<>NumRead);
   FileClose(hInput);
-
+  DeleteFile(TmpFile);
+  if NumRead=-1 then
+  begin
+    FileClose(hOutput);
+    DeleteFile(ExeFileDest);
+    Raise Exception.Create('File busy or readonly '#13#10+ExeFileSrc);
+  end;
   for i:=0 to FResources.Count-1 do
   begin
     hInput:=FileOpen(FResources[i].FileName,fmOpenRead);
@@ -201,7 +214,7 @@ Var
 begin
   AList.Clear;
   if not FileExists(FExeFile) then
-    Raise(Exception.Create('File not found : '#13#10+ExeFile));
+    Raise Exception.Create('File not found : '#13#10+ExeFile);
 
   hInput:=FileOpen(FExeFile,fmOpenRead);
   FileSeek(hInput,-SizeOf(AddrResourceFile), fsFromEnd);
@@ -245,11 +258,11 @@ var
   i:integer;
 begin
   if not DirectoryExists(Dir) then
-    Raise(Exception.Create(Dir+' : Directory not exists'));
+    Raise Exception.Create(Dir+' : Directory not exists');
   if FResources.Count=0 then
     List(FResources);
   if FResources.Count=0 then
-    Raise(Exception.Create('No File to save'));
+    Raise Exception.Create('No File to save');
   for i:=0 to FResources.Count-1 do
     SaveToFile(FResources[i],Dir+FResources[i]);
 end;
@@ -272,10 +285,10 @@ begin
   FResources.CaseSensitive:=False;
   ix:=FResources.IndexOf(ResourceName);
   if ix=-1 then
-    Raise(Exception.Create('File not found : '+#13#10+ResourceName));
+    Raise Exception.Create('File not found : '+#13#10+ResourceName);
   DeleteFile(ResourceFile);
   if FileExists(ResourceFile) then
-    Raise(Exception.Create('File busy or readonly '#13#10+ResourceFile));
+    Raise Exception.Create('File busy or readonly '#13#10+ResourceFile);
 
   hInput:=FileOpen(ExeFile,fmOpenRead);
   FileSeek(hInput,int64(FResources.Objects[ix]),fsFromBeginning);
@@ -283,7 +296,7 @@ begin
   if UpperCase(Header.Name)<>UpperCase(ResourceName) then
   begin
     FileClose(hInput);
-    Raise(Exception.Create('Catalog error : '+#13#10+ResourceName));
+    Raise Exception.Create('Catalog error : '+#13#10+ResourceName);
   end;
   hOutput:=FileCreate(ResourceFile);
   Total:=0;
@@ -346,4 +359,5 @@ end;
 
 
 end.
+
 
